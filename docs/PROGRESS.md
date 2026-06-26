@@ -13,7 +13,10 @@ starting any phase (it is listed in every phase's PREREQUISITES).
   `CLAUDE.md` is the reference.
 
 ## Status at a glance
-- **Current phase:** Phase 1 (layout snapshot — read + log) — ready to start.
+- **Current phase:** Phase 2 (persist snapshot to a per-save file + load back) — ready to start.
+- **Phase 1:** **COMPLETE (2026-06-26).** Shipping mod `RR Shelf Keeper/` built; `layout.snapshot()`
+  verified in-game (56 shelves / 1019 slots, SKUs + titles correct, empties marked). In-memory
+  only — no file I/O yet. Probe stays installed (read-only) until Phase 6.
 - **Phase 0 gate:** **CLOSED (2026-06-26).** All six §6 unknowns resolved and written into
   `CLAUDE.md` §3 + §6. Feature code (Phase 1+) may begin.
 
@@ -133,3 +136,52 @@ installed (read-only) until Phase 6.
 **Gotchas added to `CLAUDE.md` §7 this session:** slot index ≠ physical order; never
 free-recurse the live object graph (bound all recon); `Shelve_C` is a shared base (filter to
 movie leaves); placed cassette = `videotape_C`.
+
+---
+
+### 2026-06-26 — Phase 1: layout snapshot (COMPLETE)
+**Phase:** Phase 1. Mod versions `shelf-v1` → `shelf-v2` (one in-game fix). Verified on
+`Player_Save2` (game already running from the Phase 0 session; Ctrl+R hot-reload, F9).
+
+**What was done:**
+- Built the shipping mod `RR Shelf Keeper/` (junctioned into `...\ue4ss\Mods\` the same way as
+  the probe): `enabled.txt` + `Scripts/{main,config,sku,layout}.lua`. Module map matches
+  `docs/PLAN.md` §"Module map".
+  - `sku.lua` — cassette SKU/title read, **copied verbatim** from the sibling (`Product Structure`
+    → `BaseStructure_2_…` → `BoxData_25_…` → `SKU_26_…` / `ProductName_14_…`). Re-confirmed live.
+  - `layout.lua` — `snapshot()` enumerates the §6.1 movie leaf classes via `FindAllOf`, skips
+    `Default__`, reads `All Selve Containers` → `Object owning of this container` → SKU, keys each
+    slot by **array index** and each shelf by **`GetFName`**. Pure helpers `shelfId`/`format` are
+    unit-tested (`tests/layout_test.lua`, 10/10 pass under standalone `lua`).
+  - `main.lua` — **F9** hotkey + `rrshelf snapshot` console command, one `ExecuteInGameThread`
+    pass, output tagged `[RR-Shelf]`, `VERSION` banner per the build-loop rule.
+- `shelf-v1` worked first try but exposed a real bug (below); `shelf-v2` fixed it. Both runs
+  reported identical totals: **56 shelves | 1019 slots | 378 filled | 641 empty**, no errors.
+
+**What I learned (durable copy is in `CLAUDE.md` §3 "Shelf identity" + §7):**
+- **Movie shelves are double-sided → co-located actor PAIRS.** Two shelf actors share the same
+  world location, ~180° apart in yaw (e.g. `(1020,-1610,0)` yaw `+90` vs `-90`; one side often
+  stocked, the other empty). **Rounded location is NOT a unique shelf key** — `shelf-v1` keyed by
+  `class@loc` and collided every pair (and made `table.sort` on equal keys non-deterministic).
+  `shelf-v2` keys by `GetFName` (unique per instance) and logs `yaw` to expose the pairing.
+- **Shelves are runtime-spawned from the save.** `GetFName` instance numbers are near `INT32_MAX`
+  (e.g. `Shelf_Movie_4Row_01_C_2147476245`) → unique *this session* but they will renumber on
+  reload. **`GetFName` is not a cross-restart key.**
+- **Enumeration:** the explicit §6.1 leaf list via `FindAllOf` is sufficient (56 shelves found);
+  did not need `FindAllOf("Shelve_C")`.
+- **Snapshot shape (what Phase 2 serializes):** `{ shelfCount, totalSlots, totalFilled,
+  shelves = [ { id=GetFName, class, name=fullname, loc={x,y,z}, yaw, slotCount, filled,
+  slots = [ { index, sku|nil, title|nil } ] } ] }`. Shelves sorted by (loc, id) for a
+  deterministic, idempotent dump.
+
+**What's next (Phase 2):** persist the snapshot to a per-save side file and load it back.
+**First task is to settle the durable shelf key**, since `GetFName` won't survive a restart:
+probe the `GUID Shelf` struct's verbatim field keys (or `Shelve_Save.ID`) and re-key the snapshot
+on the GUID before serializing. Persistence key for the *file name* = `gm["Save Slot Name"]`
+(Phase 0; `Player_Save2`). Use Lua `io`, write under `RR Shelf Keeper/layouts/<key>.lua`, all I/O
+`pcall`-guarded. Decision needed: store per-shelf GUID + per-slot {index→SKU}; an empty slot is a
+real, recorded value (slot exists, SKU nil), not an omission.
+
+**Open item:** nothing was committed. `CLAUDE.md` is gitignored; `RR Shelf Keeper/`, `tests/`,
+`docs/` are tracked. Awaiting the user's go-ahead to commit Phase 1 (sole-author, no
+`Co-Authored-By`, per the policy in `CLAUDE.md` §10).
