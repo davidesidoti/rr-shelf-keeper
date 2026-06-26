@@ -40,3 +40,9 @@ luac.out
 *.hex
 
 CLAUDE.md
+
+# Per-save layout files written by `rrshelf save` (runtime data; keep the folder via .gitkeep)
+RR Shelf Keeper/layouts/*.lua
+
+# Transient unit-test scratch files
+tests/_tmp_*

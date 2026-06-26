@@ -13,7 +13,10 @@ starting any phase (it is listed in every phase's PREREQUISITES).
   `CLAUDE.md` is the reference.
 
 ## Status at a glance
-- **Current phase:** Phase 2 (persist snapshot to a per-save file + load back) — ready to start.
+- **Current phase:** Phase 3 (layout enforcement on a manual hotkey — the correction primitive) — ready to start.
+- **Phase 2:** **COMPLETE (2026-06-26, shelf-v4).** Per-save layout file (`layouts/<key>.lua`, sandboxed
+  Lua return-table); durable shelf key = **loc+yaw** (GUID reflection native-crashed — removed, §6.7/§7).
+  Save→restart→load round-trip verified (56/1019/378/641, 0 collisions). 60 offline assertions pass.
 - **Phase 1:** **COMPLETE (2026-06-26).** Shipping mod `RR Shelf Keeper/` built; `layout.snapshot()`
   verified in-game (56 shelves / 1019 slots, SKUs + titles correct, empties marked). In-memory
   only — no file I/O yet. Probe stays installed (read-only) until Phase 6.
@@ -185,3 +188,87 @@ real, recorded value (slot exists, SKU nil), not an omission.
 **Open item:** nothing was committed. `CLAUDE.md` is gitignored; `RR Shelf Keeper/`, `tests/`,
 `docs/` are tracked. Awaiting the user's go-ahead to commit Phase 1 (sole-author, no
 `Co-Authored-By`, per the policy in `CLAUDE.md` §10).
+
+---
+
+### 2026-06-26 — Phase 2: persist snapshot to a per-save file + load back (COMPLETE, VERIFIED)
+**Phase:** Phase 2. Mod version `shelf-v2` → `shelf-v3` (crashed) → **`shelf-v4`** (fixed, verified).
+**In-game round-trip CONFIRMED:** `rrshelf save` wrote `layouts/Player_Save2.lua`; after a **game
+restart** `rrshelf load` reproduced the **identical 56 shelves / 1019 slots / 378 filled / 641
+empty** layout (UE4SS.log 16:23:04). The saved file re-checked offline: version=2, 56 shelves,
+**0 durable-key collisions**. Offline suites: **60/60 assertions across 4 suites** under standalone
+`lua` (5.5 locally; UE4SS 5.4 — both take the modern `load(...,"t",{})` path).
+
+**What was done (TDD for the pure modules — RED→GREEN watched each step):**
+- **`store.lua`** (new) — serialize/deserialize + disk `save`/`load`. Format = a **Lua
+  return-table** (no JSON dep; CLAUDE.md §5), deserialized in an **empty sandbox env**
+  (`load(s,"=layout","t",{})`) so a tampered layout file can't execute code. Integers emit
+  without `.0` (SKUs read clean); output is key-sorted → deterministic/idempotent. `resolveDir`
+  self-locates `<mod>/layouts/` from `debug.getinfo(1,"S").source` (override `config.LayoutsDir`),
+  logged each save. `tests/store_test.lua` (18 checks: round-trip, idempotency, escaping,
+  garbage/empty/non-table → nil+err, sandbox blocks `os.*`, disk round-trip, missing file).
+- **`key.lua`** (new) — `sanitize()` (keep `[A-Za-z0-9_-]`; dots→`_` kills `../`; empty/non-string
+  →`"default"`) + runtime `fromGamemode()` reading `gm["Save Slot Name"]`. `tests/key_test.lua`
+  (11 checks).
+- **`layout.lua`** (extended) — added pure **`durableShelfId`** (GUID `"g:a-b-c-d"` → loc+yaw
+  `"l:x,y,z,yaw"` fallback) and **`toPersist`** (project live snapshot → focused on-disk shape,
+  format-compatible); runtime **`readGuidInts`** (reflective GUID read, **no hardcoded mangled
+  keys**, §7 #4); `snapshot()` now tallies GUID-read coverage + **durable-key collisions** + a
+  GUID field-name sample; `format()` logs them. New tests in `tests/layout_test.lua` (+9) and a
+  new end-to-end **`tests/persist_integration_test.lua`** (7 checks: `toPersist→save→load→format`,
+  asserting the saved log == loaded log — the offline proxy for the in-game criterion).
+- **`main.lua`** — `rrshelf save` / `rrshelf load` (+ optional `config.SaveKey`/`LoadKey` hotkeys,
+  **nil by default → console-only**, deliberate so a disk write isn't a fat-fingered key). Each
+  action is one `ExecuteInGameThread` + `pcall` pass. F9 still = snapshot.
+- **`config.lua`** — added `SaveKey`/`LoadKey` (nil) + `LayoutsDir` (nil = auto-resolve).
+- **`layouts/.gitkeep`** committed (dir must exist through the junction; `store.save` doesn't
+  mkdir). `.gitignore` now ignores `RR Shelf Keeper/layouts/*.lua` + `tests/_tmp_*`.
+
+**Key decisions (durable copy in `CLAUDE.md` §6.7):**
+- **Serialization = Lua return-table**, not JSON — zero deps, and a sandboxed `load` is a safe
+  one-liner deserializer.
+- **Durable shelf key = serialized GUID, loc+yaw fallback.** GetFName renumbers across restarts
+  (Phase 1), so it can't key persistence. The GUID is read **reflectively by enumerating the
+  struct's int fields** — this sidesteps the "never hardcode GUID-mangled keys" rule entirely.
+  loc+yaw is a fully durable+unique fallback on its own (static actors; pairs differ ~180° yaw).
+
+**What's next / for the USER to verify in-game (the build-loop step I can't do):**
+1. **Ctrl+R** to hot-reload; confirm `UE4SS.log` shows `loaded (shelf-v3`.
+2. Stand in the stocked store, run **`rrshelf save`** in the `` ` `` console. In the log confirm:
+   the `durable keys: GUID read for N/56 shelves; 0 collision(s)` line (note **whether N=56**, i.e.
+   the GUID read worked, or it fell back to loc+yaw), the sampled **GUID field names**, and a final
+   `SAVED 56 shelves / 1019 slots -> <path>`. Verify that `<path>\Player_Save2.lua` exists on disk.
+3. **Restart the game**, load the same save, run **`rrshelf load`** → the logged layout must match
+   the saved one. Then `rrshelf load` on a save with no file must log a clean "no layout" (no crash).
+4. Report the log back. Then I'll finalize `CLAUDE.md` §6.7 (record GUID-read success + verbatim
+   field names) and flip this entry to COMPLETE.
+
+**Gotchas/edge cases handled:** empty slot persists as `{index=N}` (sku absent = intentional, not
+omitted); bad/missing/tampered file → `nil`+logged error, never a crash; `Save Slot Name` unreadable
+→ key `"default"` + warning; durable-key collision → warning before the save is trusted.
+
+**Open item:** Phase 1 was committed (`cc639e9`); Phase 2 committed at the end of this session
+(sole-author, no `Co-Authored-By`, `CLAUDE.md`/`layouts/*.lua` excluded per `.gitignore`).
+
+#### Update — shelf-v3 `rrshelf save` NATIVE-CRASHED → fixed in shelf-v4 (durable key = loc+yaw)
+**Symptom:** first in-game `rrshelf save` (shelf-v3) hard-crashed the game.
+**Root cause (systematic-debugging, confirmed from UE4SS.log):** the log ended right after the
+`loaded (shelf-v3` banner with **zero `[RR-Shelf]` output and no "Save error"** line. `runSave`'s
+first output is *after* `layout.snapshot()` returns, and every action is `pcall`-wrapped — so a
+caught Lua error would have been logged. None was → a **`pcall`-uncatchable NATIVE crash inside
+`snapshot()`**. The v2 snapshot (line 107024+) ran cleanly over all 56 shelves printing yaw, so
+`getLoc`/`getYaw`/`GetFName` are proven safe; the **only** native code v3 added to that path was
+`readGuidInts` (reflective `GUID Shelf` read). That is the crash — same class as the DMI/SetText
+native crashes (CLAUDE.md §7).
+**Fix (shelf-v4):** removed `readGuidInts` entirely. Durable shelf key is now **loc+yaw**
+(`durableShelfId(nil, loc, yaw)` — only proven-safe reads). Added pure `countDurableCollisions`
+(the new safety gate: `format()` logs `durable keys (loc+yaw): N shelves, 0 collision(s)`, which
+**must be 0**). `durableShelfId` keeps a `"g:"` branch for a *future safe* GUID source but nothing
+feeds it. New gotcha + §6.7 rewrite in `CLAUDE.md`. Offline suites still green (now 50+ checks
+incl. collision detection + format line).
+**What the USER must do now (the game crashed, so relaunch):** launch the game → load the stocked
+save → console **`rrshelf save`**. Confirm in `UE4SS.log`: banner `loaded (shelf-v4`, then the
+snapshot dump, the **`durable keys (loc+yaw): 56 shelves, 0 collision(s)`** line (must be **0** —
+if not, two shelves share loc+yaw and we'll need the GUID after all), and `SAVED 56 shelves / 1019
+slots -> <path>`; verify `<path>\Player_Save2.lua` exists. Then restart, `rrshelf load`, confirm the
+logged layout matches. Report back.
