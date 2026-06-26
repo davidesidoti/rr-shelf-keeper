@@ -1,9 +1,10 @@
 -- RR Shelf Keeper — ordered restock (Approach A1): override the staff's slot choice.
 --
 -- Hooks Shelve_C:"Does any Shelve Containers still empty" — the function the restock AI calls to get
--- the empty container it will stock (recon airecon-v2: the staff fill exactly the container it
--- returns; default rule returns the highest array-index empty). We rewrite that returned
--- `Empty Container` to the next empty slot in PHYSICAL order (order.lua), so staff fill in order.
+-- the empty container it will stock (the staff fill exactly the container it returns; the default
+-- rule returns the highest array-index empty). We rewrite that returned `Empty Container` to the
+-- next empty slot in PHYSICAL order (order.lua), so staff fill in order. The hook point and its
+-- POST-callback behaviour were confirmed by the Phase-A1 recon documented in CLAUDE.md §6.8.
 -- No placed cassette is ever moved — only the chooser's return is redirected.
 local order  = require("order")
 local layout = require("layout")

@@ -1,8 +1,6 @@
 # rr-shelf-keeper
 
-A [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) Lua mod for **Retro Rewind: Video Store Simulator** that stops your staff from scrambling your shelves. Stock movies in a fixed order, and save a shelf layout so employees keep it that way instead of mixing everything up.
-
-> **Status: in development.** Not released yet. The design is scoped and the game's shelf system is understood; the build is in progress. Feature behavior below describes the goal.
+A [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) Lua mod for **Retro Rewind: Video Store Simulator** that stops your staff from scattering movies across your shelves. Employees restock each shelf in a fixed physical order — top to bottom, left to right — so it fills up neatly instead of leaving random gaps.
 
 > **Game:** Retro Rewind: Video Store Simulator (Unreal Engine 5.4)
 > **Framework:** UE4SS v3.0.1
@@ -11,20 +9,26 @@ A [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) Lua mod for **Retro Rewind: Vide
 
 ## What it does
 
-By default, staff restock movies into random empty slots, which wrecks any layout you set up (New Releases, genre shelves, alphabetical, whatever). This mod fixes that two ways:
+By default, staff drop restocked movies into whatever empty slot the game picks, which leaves your shelves looking scattered and full of gaps. This mod overrides that choice: when an employee restocks a movie shelf, the mod points them at the **next empty slot in physical order** — filling the top row left to right, then the next row down, and so on.
 
-- **Ordered placement.** Staff fill shelves in a fixed order (left to right, top to bottom) instead of at random.
-- **Save and lock a layout.** Snapshot which movie belongs in which slot, then keep your shelves matching that snapshot so staff stop rearranging them.
+- Shelves fill in a clean, predictable order instead of at random.
+- It works at the moment of restocking — the mod redirects the staff's slot choice, so **no cassette is ever yanked around or moved after it's placed**.
+- Every movie shelf type is covered, including the double-sided racks (front and back fill from the same physical end, not mirrored).
 
-Under the hood these are the same system: forced ordering is just a layout the mod generates and enforces.
+## Configuration
 
-## Roadmap
+Settings live in `RR Shelf Keeper\Scripts\config.lua`:
 
-- [ ] Snapshot the current shelf layout (which SKU is in which slot) to a per-save file.
-- [ ] Enforce the saved layout on triggers (store open, end of day, or on demand).
-- [ ] Forced ordered placement (left to right, top to bottom).
-- [ ] Config: which shelves to manage, when to enforce, ordering rule, keybinds.
-- [ ] Optional: correct placement at the source by overriding the staff slot pick.
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `OrderedRestock` | `true` | Master switch for the ordered-restock override. |
+| `FillTopFirst` | `true` | Fill rows top→bottom. Set `false` to fill bottom-up. |
+| `FillLeftFirst` | `true` | Fill each row left→right. Flip if it comes out mirrored on your shelves. |
+| `RowTol` | `15` | Height tolerance (cm) for grouping slots into the same row. |
+| `RestockDryRun` | `false` | `true` logs what it *would* do without changing placement (debugging). |
+| `RestockVerbose` | `false` | `true` logs each override (noisy; debugging only). |
+
+Edit the file and use UE4SS hot-reload (Ctrl+R) to apply changes without restarting the game.
 
 ---
 
@@ -34,32 +38,31 @@ Under the hood these are the same system: forced ordering is just a layout the m
 
 ## Installation
 
-Once released, install like any UE4SS Lua mod: copy the `RR Shelf Keeper` folder into
+Install like any UE4SS Lua mod: copy the `RR Shelf Keeper` folder into your game's UE4SS Mods folder, e.g.
 
 ```
-<SteamLibrary>\steamapps\common\RetroRewind\RetroRewind\Binaries\Win64\ue4ss\Mods\
+<SteamLibrary>\steamapps\common\RetroRewind\Binaries\Win64\ue4ss\Mods\
 ```
 
-The folder will contain an empty `enabled.txt` and a `Scripts\main.lua`. Then launch the game and load your save.
-
-## Usage
-
-Planned: save your current layout with a keypress, and the mod keeps your shelves matching it. Full controls and config will be documented here at release.
+The folder contains an empty `enabled.txt` and the `Scripts\` Lua. Launch the game and load your save — on load you'll see `RR Shelf Keeper loaded (...)` in `UE4SS.log`, and from then on staff restock movies in order.
 
 ---
 
 ## How it works
 
-Movie shelves hold an ordered array of slots, each slot holding a cassette (`Cartridge_Base_C`) identified by its SKU. The mod reads that slot to SKU mapping, saves it, and re-applies it whenever staff have moved things out of place, rather than fighting the AI mid-action. Layout enforcement runs on discrete triggers (store open, end of day, on demand) to stay safe and stable.
+Each movie shelf exposes an ordered array of slots, and the restock AI calls one Blueprint function (`Shelve_C: Does any Shelve Containers still empty`) to get the slot it should fill next. The mod hooks that function and rewrites its answer to the next empty slot in **physical** order, computed from each slot's world position: rows by height, columns projected onto the shelf's own facing (so the two sides of a double-sided shelf both fill from the same end). The staff then place the movie there as normal — the mod never touches a cassette directly, so there's no fighting the AI mid-animation and no risk to your save.
+
+A second, more ambitious feature — snapshotting and locking an exact movie-to-slot layout — was prototyped and set aside in favor of this simpler at-restock approach; see `docs/` for that history.
 
 ## Compatibility
 
-- Layout data is stored in a side file per save; your game save is not modified by the layout system.
+- The mod only redirects the staff's slot choice at restock time; it does not modify your game save.
+- Guarded to movie shelves only — snack and concession shelves are left untouched.
 - Built to coexist with other UE4SS Lua mods.
 
 ## Development
 
-See [`CLAUDE.md`](./CLAUDE.md) for the full technical context: the game's shelf and AI architecture, the UE4SS API patterns used, the design approaches, known gotchas, and the open questions to resolve before and during the build.
+See [`docs/PROGRESS.md`](./docs/PROGRESS.md) for the session-by-session build log, and [`docs/superpowers/`](./docs/superpowers/) for the ordered-restock spec and plan. The full technical context (the game's shelf/AI architecture, UE4SS API patterns, and known gotchas) lives in the project's local `CLAUDE.md`.
 
 ## Credits
 
