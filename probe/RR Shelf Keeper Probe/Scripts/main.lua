@@ -666,3 +666,7 @@ RegisterConsoleCommandHandler("rrprobe", function()
 end)
 
 log("RR Shelf Keeper PROBE loaded (" .. VERSION .. "). Press F8 or type `rrprobe` in the console.")
+
+-- Approach A1 recon lived in airecon.lua (F7 / `rrrecon` + observational restock hooks). It located the
+-- slot-chooser hook (CLAUDE.md §6.8) and is now disabled — the file is kept as the recon record but no
+-- longer required, so its hooks don't fire during play. Re-add `require("airecon")` to use it again.
