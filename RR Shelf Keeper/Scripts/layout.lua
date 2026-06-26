@@ -32,10 +32,14 @@ local MOVIE_SHELF_CLASSES = {
     "Shelf_Movie-Shelf_MovieDisplay_Unit_01_C", "Shelf_Movie-Shelf_MovieDisplay_Cabinet_01_C",
     "MovieDisplay_C",
 }
+M.MOVIE_SHELF_CLASSES = MOVIE_SHELF_CLASSES   -- reused by restock.lua's managed-shelf guard
 
--- Slot model (Phase 0 §6.2). Note the in-game typo "Selve".
+-- Slot model (Phase 0 §6.2). Note the in-game typo "Selve". Exported on M so enforce.lua reuses
+-- the exact same field names (no drift) for the mutation pass.
 local CONTAINER_ARRAY_KEY = "All Selve Containers"            -- TArray<Shelve_Container_C>
 local OWNED_OBJECT_KEY    = "Object owning of this container" -- ObjectProperty -> videotape_C or empty
+M.CONTAINER_ARRAY_KEY = CONTAINER_ARRAY_KEY
+M.OWNED_OBJECT_KEY    = OWNED_OBJECT_KEY
 
 -- ---- pure helpers (no game state; unit-tested) --------------------------------------------
 
@@ -194,9 +198,11 @@ local function arrayElems(arr)
     return out, i
 end
 
--- One slot -> { index, sku, title }. Empty slot (no/invalid cassette) -> sku/title nil.
+-- One slot -> { index, sku, title, container }. Empty slot (no/invalid cassette) -> sku/title nil.
+-- `container` is the live Shelve_Container_C ref (runtime-only; Phase 3 enforcement mutates through
+-- it). toPersist/format ignore it, so it never reaches disk.
 local function readSlot(container, index)
-    local rec = { index = index, sku = nil, title = nil }
+    local rec = { index = index, sku = nil, title = nil, container = container }
     if not container then return rec end
     local cart
     pcall(function() cart = container[OWNED_OBJECT_KEY] end)
@@ -232,6 +238,7 @@ local function readShelf(shelf)
     local rec = {
         id = id, durableId = durableId,
         class = class, name = name, loc = loc, yaw = yaw,
+        obj = shelf,                                   -- live ref (runtime-only; ignored by persist)
         slots = {}, slotCount = 0, filled = 0,
     }
 
