@@ -1,5 +1,21 @@
 # rr-shelf-keeper — Phased Build Plan
 
+> ## ⚠️ SUPERSEDED — do NOT start a session from this plan
+> This is the **Approach B** roadmap (build a save/snapshot/**enforce** layout engine,
+> Phases 0→6, with at-source AI hooking as the optional Phase 7). The project **pivoted to
+> Approach A1 (ordered restock)** and shipped it. A1 corresponds to this plan's optional
+> **Phase 7**, and it is **complete & committed**; Phases 1–5 (the Approach-B layout engine)
+> were set aside and their code **deleted** (`enforce`/`store`/`key.lua` + tests). Phase 6
+> cleanup (remove probe, README) is also done.
+>
+> **Continuing at Phase 2/3 here would rebuild exactly what was deleted.** For the real,
+> current state and roadmap, read instead:
+> - `docs/PROGRESS.md` → "Status at a glance"
+> - `docs/superpowers/{specs,plans}/2026-06-26-a1-ordered-restock*.md` (the A1 design that shipped)
+> - `CLAUDE.md §6.8` (durable A1 record)
+>
+> This file is kept only as the historical Approach-B design record.
+
 > **Planning artifact.** This file is the cross-session roadmap. Each phase is a
 > single focused session with one testable outcome. Execute phases in order.
 > **Phase 0 is a hard gate:** no feature code (Phases 1+) until Phase 0's answers are
